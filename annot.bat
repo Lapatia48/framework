@@ -1,3 +1,9 @@
+cls
 cd framework/java
-javac -d classes annotation/*.java
+
+rmdir classes /s /q
+mkdir classes
+
+javac -d classes annotation/*.java controller/*.java
+
 java -cp classes annotation.Main

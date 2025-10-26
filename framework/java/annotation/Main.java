@@ -5,19 +5,19 @@ public class Main {
         try {
             UrlHandler urlHandler = new UrlHandler();
             
-            // Scanner les annotations
-            urlHandler.scanUrlAnnotations();
+            urlHandler.scanControllers("controller");
             
             // Afficher toutes les mappings
             urlHandler.printAllMappings();
             
             // Tester les URLs
             System.out.println("\n=== TESTS DES URLs ===");
+            testUrl(urlHandler, "/about");
+            testUrl(urlHandler, "/contact");
+            testUrl(urlHandler, "/services");
             testUrl(urlHandler, "/hello");
-            testUrl(urlHandler, "/users");
-            testUrl(urlHandler, "/test");
-            testUrl(urlHandler, "/inexistant");
-            
+            testUrl(urlHandler, "/products");
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -26,9 +26,9 @@ public class Main {
     private static void testUrl(UrlHandler handler, String url) {
         String result = handler.handleUrl(url);
         if (result != null) {
-            System.out.println("✓ " + url + " -> " + result);
+            System.out.println(url + " -> " + result);
         } else {
-            System.out.println("✗ " + url + " -> NON TROUVÉ");
+            System.out.println(url + " -> NON TROUVÉ");
         }
     }
 }
