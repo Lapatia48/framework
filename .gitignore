@@ -1,0 +1,13 @@
+# Fichiers compilés Java
+*.class
+
+# Dossier de compilation
+classes/
+
+# Fichiers de l'IDE
+.idea/
+*.iml
+
+# Fichiers de build
+target/
+build/
