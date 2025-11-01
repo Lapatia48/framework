@@ -1,9 +1,10 @@
-cls
-cd framework/java
+@echo off
+cd test
 
-rmdir classes /s /q
-mkdir classes
+if not exist classes mkdir classes
 
-javac -d classes annotation/*.java controller/*.java
+:: Compiler
+javac -cp "..\framework\java" -d classes controller\*.java
 
-java -cp classes annotation.Main
+:: Lancer
+java -cp "classes;..\framework\java\classes" controller.Main
