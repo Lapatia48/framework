@@ -10,7 +10,7 @@ public class Main {
             urlHandler.scanControllers("controller");
             
             // Afficher toutes les mappings
-            urlHandler.printAllMappings();
+            // urlHandler.printAllMappings();
             
             // Tester les URLs
             System.out.println("\n=== TESTS DES URLs ===");

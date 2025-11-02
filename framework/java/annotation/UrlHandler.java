@@ -14,7 +14,7 @@ public class UrlHandler {
     private List<Class<?>> controllers = new ArrayList<>();
 
     public void scanControllers(String basePackage) throws Exception {
-        System.out.println("Scanning package: " + basePackage);
+        // System.out.println("Scanning package: " + basePackage);
         
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         String path = basePackage.replace('.', '/');
@@ -34,7 +34,7 @@ public class UrlHandler {
         for (Class<?> clazz : classes) {
             if (clazz.isAnnotationPresent(Controller.class)) {
                 controllers.add(clazz);
-                System.out.println("Controller trouvé: " + clazz.getName());
+                // System.out.println("Controller trouvé: " + clazz.getName());
             }
         }
         
@@ -68,7 +68,7 @@ public class UrlHandler {
 
     public void scanUrlAnnotations() throws Exception {
         for (Class<?> controller : controllers) {
-            System.out.println("Scanning URLs dans: " + controller.getSimpleName());
+            // System.out.println("Scanning URLs dans: " + controller.getSimpleName());
             
             for (Method method : controller.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(Url.class)) {
@@ -84,7 +84,7 @@ public class UrlHandler {
                     }
                     
                     urlMappings.put(url, method);
-                    System.out.println("  URL mappée: " + url + " -> " + method.getName());
+                    // System.out.println("  URL mappée: " + url + " -> " + method.getName());
                 }
             }
         }
@@ -120,5 +120,12 @@ public class UrlHandler {
     
     public int getUrlMappingCount() {
         return urlMappings.size();
+    }
+
+    public void addController(Class<?> controllerClass) {
+        if (controllerClass.isAnnotationPresent(Controller.class)) {
+            controllers.add(controllerClass);
+            System.out.println("Contrôleur ajouté: " + controllerClass.getName());
+        }
     }
 }
