@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.RequestDispatcher;
+import java.util.List;
 
 public class FrontServlet extends HttpServlet {
     
@@ -16,38 +17,8 @@ public class FrontServlet extends HttpServlet {
     public void init() throws ServletException {
         try {
             urlHandler = new UrlHandler();
-            
-            // Essayer les deux possibilités
-            urlHandler.scanControllers("controller");
-            
-            // Si aucun contrôleur trouvé, essayer de charger manuellement
-            if (urlHandler.getControllerCount() == 0) {
-                System.out.println("Aucun contrôleur trouvé avec 'controller'");
-                
-                // Essayer avec le chemin de classe complet
-                try {
-                    Class<?> c1 = Class.forName("controller.TestController");
-                    Class<?> c2 = Class.forName("controller.Test2Controller");
-                    Class<?> c3 = Class.forName("controller.Test3Controller");
-                    
-                    // Utiliser une méthode publique pour ajouter
-                    urlHandler.addController(c1);
-                    urlHandler.addController(c2);
-                    urlHandler.addController(c3);
-                    
-                    // Rescanner les annotations
-                    urlHandler.scanUrlAnnotations();
-                    
-                    System.out.println("Contrôleurs chargés manuellement: " + urlHandler.getUrlMappingCount());
-                    
-                } catch (ClassNotFoundException e) {
-                    System.err.println("Erreur chargement manuel: " + e.getMessage());
-                }
-            }
-            
-        } catch (Exception e) {
-            throw new ServletException("Erreur initialisation", e);
-        }
+            urlHandler.scanControllers("controller"); 
+        } catch (Exception e) {throw new ServletException("Erreur initialisation", e);}
     }
 
     @Override

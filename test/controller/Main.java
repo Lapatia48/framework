@@ -7,18 +7,18 @@ public class Main {
         try {
             UrlHandler urlHandler = new UrlHandler();
             
+            // Tester la nouvelle méthode universelle
+            System.out.println("=== TEST SCAN UNIVERSEL ===");
             urlHandler.scanControllers("controller");
             
-            // Afficher toutes les mappings
-            // urlHandler.printAllMappings();
+            // Afficher les mappings
+            urlHandler.printAllMappings();
             
             // Tester les URLs
             System.out.println("\n=== TESTS DES URLs ===");
             testUrl(urlHandler, "/about");
             testUrl(urlHandler, "/contact");
             testUrl(urlHandler, "/services");
-            testUrl(urlHandler, "/hello");
-            testUrl(urlHandler, "/products");
 
         } catch (Exception e) {
             e.printStackTrace();
