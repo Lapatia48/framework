@@ -16,9 +16,16 @@ public class FrontServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         try {
+            System.out.println("=== INITIALISATION FRONT SERVLET ===");
             urlHandler = new UrlHandler();
             urlHandler.scanControllers("controller"); 
-        } catch (Exception e) {throw new ServletException("Erreur initialisation", e);}
+            System.out.println("Initialisation terminée - Controllers: " + urlHandler.getControllerCount() + 
+                             ", URLs: " + urlHandler.getUrlMappingCount());
+        } catch (Exception e) {
+            System.err.println("ERREUR Initialisation FrontServlet: " + e.getMessage());
+            e.printStackTrace();
+            throw new ServletException("Erreur initialisation", e);
+        }
     }
 
     @Override

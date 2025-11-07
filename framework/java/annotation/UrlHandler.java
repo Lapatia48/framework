@@ -39,36 +39,23 @@ public class UrlHandler {
 
     private void scanFileSystem(URL resource, String basePackage) throws Exception {
         String filePath = resource.getFile();
+        String decodedPath = URLDecoder.decode(filePath, "UTF-8");
+        File directory = new File(decodedPath);
         
-        if (filePath.contains("WEB-INF/classes") || filePath.contains("webapps")) {
-            String decodedPath = URLDecoder.decode(filePath, "UTF-8");
-            File directory = new File(decodedPath);
-            
-            if (directory.exists() && directory.isDirectory()) {
-                File[] files = directory.listFiles();
-                if (files != null) {
-                    for (File file : files) {
-                        if (file.isFile() && file.getName().endsWith(".class")) {
-                            String className = basePackage + '.' + file.getName().substring(0, file.getName().length() - 6);
-                            try {
-                                Class<?> clazz = Class.forName(className);
-                                if (clazz.isAnnotationPresent(Controller.class)) {
-                                    controllers.add(clazz);
-                                }
-                            } catch (ClassNotFoundException e) {
-                                // Ignorer
+        if (directory.exists() && directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile() && file.getName().endsWith(".class")) {
+                        String className = basePackage + '.' + file.getName().substring(0, file.getName().length() - 6);
+                        try {
+                            Class<?> clazz = Class.forName(className);
+                            if (clazz.isAnnotationPresent(Controller.class)) {
+                                controllers.add(clazz);
                             }
+                        } catch (ClassNotFoundException e) {
+                            // Ignorer les classes non trouvées
                         }
-                    }
-                }
-            }
-        } else {
-            File directory = new File(filePath);
-            if (directory.exists()) {
-                List<Class<?>> classes = findClasses(directory, basePackage);
-                for (Class<?> clazz : classes) {
-                    if (clazz.isAnnotationPresent(Controller.class)) {
-                        controllers.add(clazz);
                     }
                 }
             }
@@ -101,39 +88,14 @@ public class UrlHandler {
                             controllers.add(clazz);
                         }
                     } catch (ClassNotFoundException | NoClassDefFoundError e) {
-                        // Ignorer
+                        
                     }
                 }
             }
         }
     }
 
-    private List<Class<?>> findClasses(File directory, String packageName) throws Exception {
-        List<Class<?>> classes = new ArrayList<>();
-        if (!directory.exists()) {
-            return classes;
-        }
-        
-        File[] files = directory.listFiles();
-        if (files == null) return classes;
-        
-        for (File file : files) {
-            if (file.isDirectory()) {
-                classes.addAll(findClasses(file, packageName + "." + file.getName()));
-            } else if (file.getName().endsWith(".class")) {
-                String className = packageName + '.' + file.getName().substring(0, file.getName().length() - 6);
-                try {
-                    Class<?> clazz = Class.forName(className);
-                    classes.add(clazz);
-                } catch (ClassNotFoundException e) {
-                    // Ignorer
-                }
-            }
-        }
-        return classes;
-    }
-
-    public void scanUrlAnnotations() throws Exception {
+    private void scanUrlAnnotations() throws Exception {
         for (Class<?> controller : controllers) {
             for (Method method : controller.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(Url.class)) {
@@ -183,11 +145,5 @@ public class UrlHandler {
     
     public int getUrlMappingCount() {
         return urlMappings.size();
-    }
-
-    public void addController(Class<?> controllerClass) {
-        if (controllerClass.isAnnotationPresent(Controller.class)) {
-            controllers.add(controllerClass);
-        }
     }
 }
