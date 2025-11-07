@@ -20,7 +20,7 @@ if exist "%JAR_DIR%" rmdir /s /q "%JAR_DIR%"
 mkdir "%BUILD_DIR%"
 mkdir "%JAR_DIR%"
 
-echo Recherche et compilation de toutes les classes Java...
+echo Compilation du framework...
 set FILES=
 for /R "%SRC_DIR%" %%f in (*.java) do (
     set FILES=!FILES! "%%f"
@@ -29,12 +29,21 @@ for /R "%SRC_DIR%" %%f in (*.java) do (
 javac -cp "%TOMCAT_HOME%\lib\servlet-api.jar" -d "%BUILD_DIR%" %FILES%
 
 if %ERRORLEVEL% NEQ 0 (
-    echo ERREUR: La compilation a echoue.
+    echo ERREUR: La compilation du framework a echoue.
     exit /b 1
 )
 
 echo Creation du JAR %JAR_FILE%...
 jar cf "%JAR_FILE%" -C "%BUILD_DIR%" .
+
+echo Compilation des contrôleurs du test...
+if not exist "test\WEB-INF\classes" mkdir "test\WEB-INF\classes"
+javac -cp "%JAR_FILE%;%TOMCAT_HOME%\lib\servlet-api.jar" -d "test\WEB-INF\classes" test\controller\*.java
+
+if %ERRORLEVEL% NEQ 0 (
+    echo ERREUR: La compilation des contrôleurs a echoue.
+    exit /b 1
+)
 
 echo Copie du JAR dans test\WEB-INF\lib...
 if not exist "test\WEB-INF\lib" mkdir "test\WEB-INF\lib"

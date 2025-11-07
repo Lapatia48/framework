@@ -2,7 +2,6 @@ package controller;
 
 import annotation.*;
 
-@Controller
 public class Test3Controller {
 
     @Url("/products")
