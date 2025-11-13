@@ -58,4 +58,3 @@ rmdir /s /q "%BUILD_DIR%"
 rmdir /s /q "%JAR_DIR%"
 
 echo Deploiement termine avec succes !
-pause

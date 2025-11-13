@@ -18,4 +18,9 @@ public class TestController {
     public String notMapped() {
         return "Cette méthode ne sera pas mappée";
     }
+
+    @Url("/nombre")
+    public Double nombre() {
+        return 42.0;
+    }
 }

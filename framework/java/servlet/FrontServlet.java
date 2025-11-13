@@ -56,13 +56,24 @@ public class FrontServlet extends HttpServlet {
             defaultDispatcher.forward(req, resp);
         } else {
             // Utiliser UrlHandler comme dans Main.java
-            String result = urlHandler.handleUrl(path);
+            Object[] result = urlHandler.handleUrl(path);
             if (result != null) {
                 // URL trouvée dans les annotations @Url
-                resp.getWriter().println(path + " -> " + result);
+                String url = (String) result[0];
+                Class<?> returnType = (Class<?>) result[1];
+                String methodName = (String) result[2];
+                Object returnValue = result[3];
+                String controllerName = (String) result[4];
+                
+                // resp.getWriter().println(url + " -> " + methodName + "() [" + returnType.getSimpleName() + "] = " + returnValue + " (from " + controllerName + ")");
+                resp.getWriter().println("url: " + url); //le url
+                resp.getWriter().println("type de retour: " + returnType.getSimpleName()); //le type de retour
+                resp.getWriter().println("nom de la methode: " + methodName); //le nom de la méthode
+                resp.getWriter().println("valeur de retour: " + returnValue); //la valeur du return
+                resp.getWriter().println("nom du controlleur: " + controllerName); //le nom du contrôleur
             } else {
                 // URL non trouvée
-                resp.getWriter().println(path);
+                resp.getWriter().println(path + " -> nom trouvee");
             }
         }
     }
