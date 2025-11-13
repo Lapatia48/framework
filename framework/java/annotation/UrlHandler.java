@@ -115,22 +115,37 @@ public class UrlHandler {
         }
     }
 
-    public String handleUrl(String url) {
+    public Object[] handleUrl(String url) {
         try {
             Method method = urlMappings.get(url);
             if (method != null) {
                 Class<?> controllerClass = method.getDeclaringClass();
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                Object result = method.invoke(controllerInstance);
-                return result.toString();
+                Object resultValue = method.invoke(controllerInstance);
+                Class<?> returnType = method.getReturnType();
+                
+                // Retourner un tableau avec toutes les informations
+                return new Object[] {
+                    url,                    // [0] = l'argument path
+                    returnType,             // [1] = le type de retour (Class)
+                    method.getName(),       // [2] = le nom de la méthode
+                    resultValue,            // [3] = la valeur du return
+                    controllerClass.getSimpleName() // [4] = nom du contrôleur (bonus)
+                };
             }
             return null;
         } catch (Exception e) {
             e.printStackTrace();
-            return "Erreur: " + e.getMessage();
+            return new Object[] {
+                url,
+                null,
+                null,
+                "Erreur: " + e.getMessage(),
+                null
+            };
         }
     }
-
+    
     public void printAllMappings() {
         System.out.println("=== TOUTES LES URLS MAPPÉES ===");
         for (String url : urlMappings.keySet()) {
