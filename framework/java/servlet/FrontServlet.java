@@ -74,7 +74,12 @@ public class FrontServlet extends HttpServlet {
                     RequestDispatcher dispatcher = req.getRequestDispatcher("/WEB-INF/views/" + viewName);
                     if (dispatcher != null) {
                         // Passer les données à la vue si elles existent
-
+                        if (mv.getData() instanceof java.util.Map) {
+                            java.util.Map<String, Object> data = (java.util.Map<String, Object>) mv.getData();
+                            for (java.util.Map.Entry<String, Object> entry : data.entrySet()) {
+                                req.setAttribute(entry.getKey(), entry.getValue());
+                            }
+                        }
                         dispatcher.forward(req, resp);
                     } else {
                         resp.getWriter().println("Vue non trouvée: " + viewName);
