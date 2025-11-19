@@ -1,5 +1,7 @@
 package modelAndView;
 
+import java.util.Map;
+
 public class ModelAndView {
     private String viewName;
     private Object data;
@@ -21,5 +23,15 @@ public class ModelAndView {
         this.viewName = viewName;
     }
         
+    public Map<String, Object> getData() {
+        if (data instanceof Map) {
+            return (Map<String, Object>) data;
+        }
+        return null;
+    }
+
+    public void setData(Object data) {
+        this.data = data;
+    }
 
 }
