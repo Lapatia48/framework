@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import modelAndView.ModelAndView;
 import jakarta.servlet.RequestDispatcher;
 import java.util.List;
 
@@ -49,28 +50,43 @@ public class FrontServlet extends HttpServlet {
         }
 
         // Vérifier si c'est une ressource statique
-        boolean resourceExists = getServletContext().getResource(path) != null;
+         boolean resourceExists = getServletContext().getResource(path) != null;
         if (resourceExists) {
             // Déléguer au conteneur servlet par défaut pour les ressources statiques
             RequestDispatcher defaultDispatcher = getServletContext().getNamedDispatcher("default");
             defaultDispatcher.forward(req, resp);
         } else {
-            // Utiliser UrlHandler comme dans Main.java
+            // Utiliser UrlHandler avec retour structuré
             Object[] result = urlHandler.handleUrl(path);
             if (result != null) {
-                // URL trouvée dans les annotations @Url
                 String url = (String) result[0];
                 Class<?> returnType = (Class<?>) result[1];
                 String methodName = (String) result[2];
                 Object returnValue = result[3];
                 String controllerName = (String) result[4];
                 
-                // resp.getWriter().println(url + " -> " + methodName + "() [" + returnType.getSimpleName() + "] = " + returnValue + " (from " + controllerName + ")");
-                resp.getWriter().println("url: " + url); //le url
-                resp.getWriter().println("type de retour: " + returnType.getSimpleName()); //le type de retour
-                resp.getWriter().println("nom de la methode: " + methodName); //le nom de la méthode
-                resp.getWriter().println("valeur de retour: " + returnValue); //la valeur du return
-                resp.getWriter().println("nom du controlleur: " + controllerName); //le nom du contrôleur
+                // Vérifier si c'est un ModelAndView
+                if (returnValue instanceof ModelAndView) {
+                    ModelAndView mv = (ModelAndView) returnValue;
+                    String viewName = mv.getViewName();
+                    
+                    // Dispatcher vers la vue JSP/HTML
+                    RequestDispatcher dispatcher = req.getRequestDispatcher("/WEB-INF/views/" + viewName);
+                    if (dispatcher != null) {
+                        // Passer les données à la vue si elles existent
+
+                        dispatcher.forward(req, resp);
+                    } else {
+                        resp.getWriter().println("Vue non trouvée: " + viewName);
+                    }
+                } else {
+                    // Affichage normal pour les autres types
+                    resp.getWriter().println("url: " + url);
+                    resp.getWriter().println("type de retour: " + returnType.getSimpleName());
+                    resp.getWriter().println("nom de la methode: " + methodName);
+                    resp.getWriter().println("valeur de retour: " + returnValue);
+                    resp.getWriter().println("nom du controlleur: " + controllerName);
+                }
             } else {
                 // URL non trouvée
                 resp.getWriter().println(path + " -> nom trouvee");
