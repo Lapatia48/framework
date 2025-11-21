@@ -44,7 +44,7 @@ public class TestController {
     }
 
     // 1. URL avec paramètre query string: /hello?id=2
-    @Url("/hello")
+    @Url("/hellow")
     public String helloWithQueryParam(Integer id) {
         return "Hello avec query id = " + id;
     }

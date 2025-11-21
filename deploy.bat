@@ -2,7 +2,6 @@
 setlocal enabledelayedexpansion
 
 :: CONFIGURATION
-set JAVA_HOME=C:\Program Files\Java\jdk-22
 set TOMCAT_HOME=C:\Program Files\Apache Software Foundation\Tomcat 11.0
 
 :: Nom du jar (change si besoin)
