@@ -42,4 +42,28 @@ public class TestController {
         data.put("liste", Arrays.asList("item1", "item2", "item3"));
         return new ModelAndView("page.jsp", data);
     }
+
+    // 1. URL avec paramètre query string: /hello?id=2
+    @Url("/hello")
+    public String helloWithQueryParam(Integer id) {
+        return "Hello avec query id = " + id;
+    }
+
+    // 2. URL avec paramètre dans le path: /hello/path/42
+    @Url("/hello/path")
+    public String helloWithPathParam(Integer id) {
+        return "Hello avec path id = " + id;
+    }
+
+    // 3. URL avec @RequestParam: /hello/request?id=42
+    @Url("/hello/request")
+    public String helloWithRequestParam(@RequestParam("id") String nombre) {
+        return "Hello avec request nombre = " + nombre;
+    }
+
+    // 4. URL avec accolades: /hello/braces/{id}
+    @Url("/hello/braces/{id}")
+    public String helloWithBraces(Integer id) {
+        return "Hello avec braces id = " + id;
+    }
 }
