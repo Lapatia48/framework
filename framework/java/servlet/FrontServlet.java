@@ -92,7 +92,7 @@ public class FrontServlet extends HttpServlet {
                     resp.getWriter().println("arguments: " + java.util.Arrays.toString(methodArgs));
                 }
             } else {
-                resp.getWriter().println(path + " -> non trouvée");
+                resp.getWriter().println(path + " -> non trouve");
             }
         }
     }

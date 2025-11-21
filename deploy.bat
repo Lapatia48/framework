@@ -35,12 +35,12 @@ if %ERRORLEVEL% NEQ 0 (
 echo Creation du JAR %JAR_FILE%...
 jar cf "%JAR_FILE%" -C "%BUILD_DIR%" .
 
-echo Compilation des contrôleurs du test...
+echo Compilation des controleurs du test...
 if not exist "test\WEB-INF\classes" mkdir "test\WEB-INF\classes"
 javac -parameters -cp "%JAR_FILE%;%TOMCAT_HOME%\lib\servlet-api.jar" -d "test\WEB-INF\classes" test\controller\*.java
 
 if %ERRORLEVEL% NEQ 0 (
-    echo ERREUR: La compilation des contrôleurs a echoue.
+    echo ERREUR: La compilation des controleurs a echoue.
     exit /b 1
 )
 
