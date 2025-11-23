@@ -69,4 +69,24 @@ public class TestController {
     public String helloWithBraces(Integer id) {
         return "Hello avec braces id = " + id;
     }
+
+        //test multiple path variables
+        @Url("/test/multi/{var1}/path/{var2}")
+        public String multiPathVariables(String var1, String var2) {
+            return "Variables multiples: var1 = " + var1 + ", var2 = " + var2;
+        }
+
+        //test multi @RequestParam
+        @Url("/test/multi/request")
+        public String multiRequestParams(@RequestParam("param1") String param1, @RequestParam("param2") String param2) {
+            return "Paramètres multiples: param1 = " + param1 + ", param2 = " + param2;
+        }
+
+        //test mixte path variable et request param
+        @Url("/test/mix/{pathVar}")
+        public String mixPathAndRequest(@RequestParam("reqParam") String reqParam, String pathVar) {
+            return "Mixte: pathVar = " + pathVar + ", reqParam = " + reqParam;
+        }
+
+
 }
