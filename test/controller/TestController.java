@@ -63,4 +63,10 @@ public class TestController {
     public String helloWithRequestParam(@RequestParam("id") String nombre) {
         return "Hello avec request nombre = " + nombre;
     }
+
+    //sprint-6-ter (url dynamique avec accolades)
+    @Url("/hello/braces/{id}")
+    public String helloWithBraces(Integer id) {
+        return "Hello avec braces id = " + id;
+    }
 }
