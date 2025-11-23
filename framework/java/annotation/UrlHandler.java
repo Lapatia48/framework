@@ -2,6 +2,7 @@ package annotation;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.jar.JarFile;
 public class UrlHandler {
     private Map<String, Method> urlMappings = new HashMap<>();
     private List<Class<?>> controllers = new ArrayList<>();
+    private Map<String, String[]> urlPatterns = new HashMap<>(); // Pour les URLs avec {param}
 
     public void scanControllers(String basePackage) throws Exception {
         controllers.clear();
@@ -102,6 +104,11 @@ public class UrlHandler {
                     Url urlAnnotation = method.getAnnotation(Url.class);
                     String url = urlAnnotation.value();
                     
+                    // Détection des URLs avec paramètres {param}
+                    if (url.contains("{")) {
+                        urlPatterns.put(url, extractParamNames(url));
+                    }
+                    
                     if (urlMappings.containsKey(url)) {
                         Method existingMethod = urlMappings.get(url);
                         System.err.println("CONFLIT D'URL: " + url + " existe déjà dans " + 
@@ -113,6 +120,234 @@ public class UrlHandler {
                 }
             }
         }
+    }
+
+    private String[] extractParamNames(String url) {
+        List<String> params = new ArrayList<>();
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\{([^}]+)\\}");
+        java.util.regex.Matcher matcher = pattern.matcher(url);
+        while (matcher.find()) {
+            params.add(matcher.group(1));
+        }
+        return params.toArray(new String[0]);
+    }
+
+    public Object[] handleUrl(String url, Map<String, String[]> requestParams) {
+        try {
+            Method method = findMatchingMethod(url);
+            if (method != null) {
+                Class<?> controllerClass = method.getDeclaringClass();
+                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                
+                // Préparer les arguments pour la méthode
+                Object[] args = prepareMethodArguments(method, url, requestParams);
+                
+                Object resultValue = method.invoke(controllerInstance, args);
+                Class<?> returnType = method.getReturnType();
+                
+                return new Object[] {
+                    url,
+                    returnType,
+                    method.getName(),
+                    resultValue,
+                    controllerClass.getSimpleName(),
+                    args // [5] = arguments passés (bonus pour debug)
+                };
+            }
+            return null;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new Object[] {
+                url,
+                null,
+                null,
+                "Erreur: " + e.getMessage(),
+                null,
+                null
+            };
+        }
+    }
+
+    private Method findMatchingMethod(String url) {
+        // Extraire le chemin sans les paramètres query string pour la recherche
+        String pathWithoutQuery = url.contains("?") ? url.split("\\?")[0] : url;
+        
+        // Décoder l'URL d'abord
+        try {
+            pathWithoutQuery = java.net.URLDecoder.decode(pathWithoutQuery, "UTF-8");
+        } catch (Exception e) {
+            // Ignorer si échec du décodage
+        }
+        
+        // 1. Recherche exacte (sans paramètres query)
+        Method exactMatch = urlMappings.get(pathWithoutQuery);
+        if (exactMatch != null) {
+            return exactMatch;
+        }
+        
+        // 2. Recherche pattern (hello/{id})
+        for (Map.Entry<String, String[]> entry : urlPatterns.entrySet()) {
+            String pattern = entry.getKey();
+            String regex = pattern.replaceAll("\\{[^}]+\\}", "([^/]+)");
+            if (pathWithoutQuery.matches(regex)) {
+                return urlMappings.get(pattern);
+            }
+        }
+        
+        // 3. Recherche par base (hello/id) - seulement si pas de paramètres query string
+        if (!url.contains("?")) {
+            String baseUrl = extractBaseUrl(pathWithoutQuery);
+            if (baseUrl != null && urlMappings.containsKey(baseUrl)) {
+                return urlMappings.get(baseUrl);
+            }
+        }
+        
+        return null;
+    }
+
+    private String extractBaseUrl(String url) {
+        int lastSlash = url.lastIndexOf('/');
+        if (lastSlash > 0) {
+            return url.substring(0, lastSlash);
+        }
+        return null;
+    }
+
+    private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[paramTypes.length];
+        
+        String pathWithoutQuery = url.contains("?") ? url.split("\\?")[0] : url;
+        
+        try {
+            pathWithoutQuery = java.net.URLDecoder.decode(pathWithoutQuery, "UTF-8");
+        } catch (Exception e) {}
+        
+        // Convertir les keys de requestParams en liste pour accès par index
+        List<String> paramKeys = new ArrayList<>(requestParams.keySet());
+        
+        for (int i = 0; i < paramTypes.length; i++) {
+            Class<?> paramType = paramTypes[i];
+            Parameter parameter = parameters[i];
+            args[i] = null;
+            
+            // STRATÉGIE 1: @RequestParam annotation (PRIORITÉ MAX)
+            if (parameter.isAnnotationPresent(RequestParam.class)) {
+                RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+                String paramName = annotation.value().isEmpty() ? parameter.getName() : annotation.value();
+                String[] values = requestParams.get(paramName);
+                if (values != null && values.length > 0) {
+                    args[i] = convertValue(values[0], paramType);
+                    continue;
+                }
+            }
+            
+            // STRATÉGIE 2: Correspondance par nom exact
+            String[] values = requestParams.get(parameter.getName());
+            if (values != null && values.length > 0) {
+                args[i] = convertValue(values[0], paramType);
+                continue;
+            }
+            
+            // STRATÉGIE 3: Si le paramètre s'appelle arg0, arg1, etc., utiliser l'index
+            if (parameter.getName().startsWith("arg") && !paramKeys.isEmpty()) {
+                try {
+                    int argIndex = Integer.parseInt(parameter.getName().substring(3));
+                    if (argIndex < paramKeys.size()) {
+                        String key = paramKeys.get(argIndex);
+                        values = requestParams.get(key);
+                        if (values != null && values.length > 0) {
+                            args[i] = convertValue(values[0], paramType);
+                            continue;
+                        }
+                    }
+                } catch (NumberFormatException e) {
+                    // Ignorer si ce n'est pas un arg numérique
+                }
+            }
+            
+            // STRATÉGIE 4: Prendre le premier paramètre disponible (fallback)
+            if (args[i] == null && !paramKeys.isEmpty() && i < paramKeys.size()) {
+                String key = paramKeys.get(i);
+                values = requestParams.get(key);
+                if (values != null && values.length > 0) {
+                    args[i] = convertValue(values[0], paramType);
+                    continue;
+                }
+            }
+            
+            // STRATÉGIE 5: Paramètres d'URL pattern
+            if (args[i] == null && urlPatterns.containsKey(findPatternUrl(pathWithoutQuery))) {
+                String patternUrl = findPatternUrl(pathWithoutQuery);
+                Map<String, String> urlParams = extractUrlParams(patternUrl, pathWithoutQuery);
+                String paramValue = urlParams.get(parameter.getName());
+                if (paramValue != null) {
+                    args[i] = convertValue(paramValue, paramType);
+                    continue;
+                }
+            }
+            
+            // STRATÉGIE 6: Paramètres de path simple
+            if (args[i] == null && pathWithoutQuery.contains("/") && !pathWithoutQuery.contains("{") && !pathWithoutQuery.contains("?")) {
+                String[] urlParts = pathWithoutQuery.split("/");
+                String lastPart = urlParts[urlParts.length - 1];
+                if (lastPart.matches("\\d+") && isNumericType(paramType)) {
+                    args[i] = convertValue(lastPart, paramType);
+                    continue;
+                }
+            }
+        }
+        
+        return args;
+    }
+
+    // Ajoutez cette méthode helper
+    private boolean isNumericType(Class<?> type) {
+        return type == Integer.class || type == int.class || 
+            type == Long.class || type == long.class ||
+            type == Double.class || type == double.class ||
+            type == Float.class || type == float.class;
+    }
+
+    private String findPatternUrl(String url) {
+        for (String pattern : urlPatterns.keySet()) {
+                String regex = pattern.replaceAll("\\{[^}]+\\}", "([^/]+)");
+                if (url.matches(regex)) {
+                    return pattern;
+                }
+            }
+            return null;
+        }
+
+        private Map<String, String> extractUrlParams(String pattern, String url) {
+        Map<String, String> params = new HashMap<>();
+        String[] patternParts = pattern.split("/");
+        String[] urlParts = url.split("/");
+        
+        for (int i = 0; i < patternParts.length && i < urlParts.length; i++) {
+            if (patternParts[i].startsWith("{") && patternParts[i].endsWith("}")) {
+                String paramName = patternParts[i].substring(1, patternParts[i].length() - 1);
+                params.put(paramName, urlParts[i]);
+            }
+        }
+        return params;
+    }
+
+    private Object convertValue(String value, Class<?> targetType) {
+        if (value == null) return null;
+        
+        try {
+            if (targetType == String.class) return value;
+            if (targetType == Integer.class || targetType == int.class) return Integer.parseInt(value);
+            if (targetType == Long.class || targetType == long.class) return Long.parseLong(value);
+            if (targetType == Double.class || targetType == double.class) return Double.parseDouble(value);
+            if (targetType == Boolean.class || targetType == boolean.class) return Boolean.parseBoolean(value);
+            // Ajouter d'autres types au besoin
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return null;
     }
 
     public Object[] handleUrl(String url) {

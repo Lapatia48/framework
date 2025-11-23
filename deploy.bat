@@ -2,7 +2,6 @@
 setlocal enabledelayedexpansion
 
 :: CONFIGURATION
-set JAVA_HOME=C:\Program Files\Java\jdk-22
 set TOMCAT_HOME=C:\Program Files\Apache Software Foundation\Tomcat 11.0
 
 :: Nom du jar (change si besoin)
@@ -26,7 +25,7 @@ for /R "%SRC_DIR%" %%f in (*.java) do (
     set FILES=!FILES! "%%f"
 )
 
-javac -cp "%TOMCAT_HOME%\lib\servlet-api.jar" -d "%BUILD_DIR%" %FILES%
+javac -parameters -cp "%TOMCAT_HOME%\lib\servlet-api.jar" -d "%BUILD_DIR%" %FILES%
 
 if %ERRORLEVEL% NEQ 0 (
     echo ERREUR: La compilation du framework a echoue.
@@ -36,12 +35,12 @@ if %ERRORLEVEL% NEQ 0 (
 echo Creation du JAR %JAR_FILE%...
 jar cf "%JAR_FILE%" -C "%BUILD_DIR%" .
 
-echo Compilation des contrôleurs du test...
+echo Compilation des controleurs du test...
 if not exist "test\WEB-INF\classes" mkdir "test\WEB-INF\classes"
-javac -cp "%JAR_FILE%;%TOMCAT_HOME%\lib\servlet-api.jar" -d "test\WEB-INF\classes" test\controller\*.java
+javac -parameters -cp "%JAR_FILE%;%TOMCAT_HOME%\lib\servlet-api.jar" -d "test\WEB-INF\classes" test\controller\*.java
 
 if %ERRORLEVEL% NEQ 0 (
-    echo ERREUR: La compilation des contrôleurs a echoue.
+    echo ERREUR: La compilation des controleurs a echoue.
     exit /b 1
 )
 
