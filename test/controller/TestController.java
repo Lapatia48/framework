@@ -24,17 +24,19 @@ public class TestController {
         return "Cette méthode ne sera pas mappée";
     }
 
+    //sprint 3...(test du type de retour)
     @Url("/nombre")
     public Double nombre() {
         return 42.0;
     }
 
-    
+    //sprint 4...(test ModelAndView)
     @Url("/ma_vue")
     public ModelAndView vue() {
         return new ModelAndView("b.html");
     }
     
+    //sprint 5...(test ModelAndView avec données)
     @Url("/vue_avec_donnees")
     public ModelAndView vueAvecDonnees() {
         Map<String, Object> data = new HashMap<>();
@@ -43,27 +45,11 @@ public class TestController {
         return new ModelAndView("page.jsp", data);
     }
 
+    //sprint 3bis(url dynamique)
     // 1. URL avec paramètre query string: /hello?id=2
     @Url("/hellow")
     public String helloWithQueryParam(Integer id) {
         return "Hello avec query id = " + id;
     }
-
-    // 2. URL avec paramètre dans le path: /hello/path/42
-    @Url("/hello/path")
-    public String helloWithPathParam(Integer id) {
-        return "Hello avec path id = " + id;
-    }
-
-    // 3. URL avec @RequestParam: /hello/request?id=42
-    @Url("/hello/request")
-    public String helloWithRequestParam(@RequestParam("id") String nombre) {
-        return "Hello avec request nombre = " + nombre;
-    }
-
-    // 4. URL avec accolades: /hello/braces/{id}
-    @Url("/hello/braces/{id}")
-    public String helloWithBraces(Integer id) {
-        return "Hello avec braces id = " + id;
-    }
+    
 }
