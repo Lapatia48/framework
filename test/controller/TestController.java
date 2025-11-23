@@ -53,9 +53,14 @@ public class TestController {
     }
 
     //sprint6...(url dynamique avec path variable)
-    // 2. URL avec paramètre dans le path: /hello/path/42
     @Url("/hello/path")
     public String helloWithPathParam(Integer id) {
         return "Hello avec path id = " + id;
+    }
+
+    //sprint6bis (url dynamique avec request param)
+    @Url("/hello/request")
+    public String helloWithRequestParam(@RequestParam("id") String nombre) {
+        return "Hello avec request nombre = " + nombre;
     }
 }
