@@ -31,34 +31,35 @@ public class FrontServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        chercherRessource(req, resp);
+        chercherRessource(req, resp, "GET");
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        chercherRessource(req, resp);
+        chercherRessource(req, resp, "POST");
     }
 
-    private void chercherRessource(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    private void chercherRessource(HttpServletRequest req, HttpServletResponse resp, String httpMethod) 
+            throws ServletException, IOException {
         String path = req.getRequestURI().substring(req.getContextPath().length());
         
-        // Page d'accueil
+        
         if ("/".equals(path)) {
             resp.getWriter().println("/");
             return;
         }
 
-        // Vérifier si c'est une ressource statique
+        
         boolean resourceExists = getServletContext().getResource(path) != null;
         if (resourceExists) {
             RequestDispatcher defaultDispatcher = getServletContext().getNamedDispatcher("default");
             defaultDispatcher.forward(req, resp);
         } else {
-            // Récupérer les paramètres de requête
+
             Map<String, String[]> requestParams = req.getParameterMap();
             
             // Utiliser UrlHandler avec les paramètres
-            Object[] result = urlHandler.handleUrl(path, requestParams);
+            Object[] result = urlHandler.handleUrl(path, httpMethod, requestParams);
             if (result != null) {
                 String url = (String) result[0];
                 Class<?> returnType = (Class<?>) result[1];
