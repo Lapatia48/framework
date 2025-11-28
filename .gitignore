@@ -11,3 +11,8 @@ classes/
 # Fichiers de build
 target/
 build/
+
+#notes
+note.txt
+notes.txt
+*.txt

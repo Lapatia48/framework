@@ -14,7 +14,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public class UrlHandler {
-    private Map<String, Method> urlMappings = new HashMap<>();
+    private Map<String, Map<String, Method>> urlMappings = new HashMap<>();
     private List<Class<?>> controllers = new ArrayList<>();
     private Map<String, String[]> urlPatterns = new HashMap<>(); // Pour les URLs avec {param}
 
@@ -109,14 +109,29 @@ public class UrlHandler {
                         urlPatterns.put(url, extractParamNames(url));
                     }
                     
-                    if (urlMappings.containsKey(url)) {
-                        Method existingMethod = urlMappings.get(url);
-                        System.err.println("CONFLIT D'URL: " + url + " existe déjà dans " + 
+                    // Déterminer la méthode HTTP
+                    String httpMethod = "GET"; // Par défaut
+                    if (method.isAnnotationPresent(Post.class)) {
+                        httpMethod = "POST";
+                    } else if (method.isAnnotationPresent(Get.class)) {
+                        httpMethod = "GET";
+                    }
+                    
+                    // Initialiser la map pour cette URL si nécessaire
+                    if (!urlMappings.containsKey(url)) {
+                        urlMappings.put(url, new HashMap<>());
+                    }
+                    
+                    Map<String, Method> methodsForUrl = urlMappings.get(url);
+                    
+                    if (methodsForUrl.containsKey(httpMethod)) {
+                        Method existingMethod = methodsForUrl.get(httpMethod);
+                        System.err.println("CONFLIT D'URL: " + httpMethod + " " + url + " existe déjà dans " + 
                             existingMethod.getDeclaringClass().getSimpleName() + "." + existingMethod.getName() +
                             " et sera écrasé par " + controller.getSimpleName() + "." + method.getName());
                     }
                     
-                    urlMappings.put(url, method);
+                    methodsForUrl.put(httpMethod, method);
                 }
             }
         }
@@ -132,9 +147,9 @@ public class UrlHandler {
         return params.toArray(new String[0]);
     }
 
-    public Object[] handleUrl(String url, Map<String, String[]> requestParams) {
+    public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams) {
         try {
-            Method method = findMatchingMethod(url);
+            Method method = findMatchingMethod(url, httpMethod);
             if (method != null) {
                 Class<?> controllerClass = method.getDeclaringClass();
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
@@ -168,37 +183,43 @@ public class UrlHandler {
         }
     }
 
-    private Method findMatchingMethod(String url) {
-        // Extraire le chemin sans les paramètres query string pour la recherche
+    private Method findMatchingMethod(String url, String httpMethod) {
         String pathWithoutQuery = url.contains("?") ? url.split("\\?")[0] : url;
         
-        // Décoder l'URL d'abord
         try {
             pathWithoutQuery = java.net.URLDecoder.decode(pathWithoutQuery, "UTF-8");
-        } catch (Exception e) {
-            // Ignorer si échec du décodage
+        } catch (Exception e) {}
+        
+        // 1. Recherche exacte
+        if (urlMappings.containsKey(pathWithoutQuery)) {
+            Map<String, Method> methods = urlMappings.get(pathWithoutQuery);
+            if (methods.containsKey(httpMethod)) {
+                return methods.get(httpMethod);
+            }
         }
         
-        // 1. Recherche exacte (sans paramètres query)
-        Method exactMatch = urlMappings.get(pathWithoutQuery);
-        if (exactMatch != null) {
-            return exactMatch;
-        }
-        
-        // 2. Recherche pattern (hello/{id})
+        // 2. Recherche pattern
         for (Map.Entry<String, String[]> entry : urlPatterns.entrySet()) {
             String pattern = entry.getKey();
             String regex = pattern.replaceAll("\\{[^}]+\\}", "([^/]+)");
             if (pathWithoutQuery.matches(regex)) {
-                return urlMappings.get(pattern);
+                if (urlMappings.containsKey(pattern)) {
+                    Map<String, Method> methods = urlMappings.get(pattern);
+                    if (methods.containsKey(httpMethod)) {
+                        return methods.get(httpMethod);
+                    }
+                }
             }
         }
         
-        // 3. Recherche par base (hello/id) - seulement si pas de paramètres query string
+        // 3. Recherche par base
         if (!url.contains("?")) {
             String baseUrl = extractBaseUrl(pathWithoutQuery);
             if (baseUrl != null && urlMappings.containsKey(baseUrl)) {
-                return urlMappings.get(baseUrl);
+                Map<String, Method> methods = urlMappings.get(baseUrl);
+                if (methods.containsKey(httpMethod)) {
+                    return methods.get(httpMethod);
+                }
             }
         }
         
@@ -352,20 +373,19 @@ public class UrlHandler {
 
     public Object[] handleUrl(String url) {
         try {
-            Method method = urlMappings.get(url);
+            Method method = findMatchingMethod(url, "GET"); // GET par défaut
             if (method != null) {
                 Class<?> controllerClass = method.getDeclaringClass();
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 Object resultValue = method.invoke(controllerInstance);
                 Class<?> returnType = method.getReturnType();
                 
-                // Retourner un tableau avec toutes les informations
                 return new Object[] {
                     url,                    // [0] = l'argument path
                     returnType,             // [1] = le type de retour (Class)
                     method.getName(),       // [2] = le nom de la méthode
                     resultValue,            // [3] = la valeur du return
-                    controllerClass.getSimpleName() // [4] = nom du contrôleur (bonus)
+                    controllerClass.getSimpleName() // [4] = nom du contrôleur
                 };
             }
             return null;
@@ -384,16 +404,13 @@ public class UrlHandler {
     public void printAllMappings() {
         System.out.println("=== TOUTES LES URLS MAPPÉES ===");
         for (String url : urlMappings.keySet()) {
-            Method method = urlMappings.get(url);
-            System.out.println(url + " -> " + method.getDeclaringClass().getSimpleName() + "." + method.getName());
+            Map<String, Method> methodsForUrl = urlMappings.get(url);
+            for (Map.Entry<String, Method> entry : methodsForUrl.entrySet()) {
+                String httpMethod = entry.getKey();
+                Method method = entry.getValue();
+                System.out.println(httpMethod + " " + url + " -> " + 
+                    method.getDeclaringClass().getSimpleName() + "." + method.getName());
+            }
         }
-    }
-    
-    public int getControllerCount() {
-        return controllers.size();
-    }
-    
-    public int getUrlMappingCount() {
-        return urlMappings.size();
     }
 }
