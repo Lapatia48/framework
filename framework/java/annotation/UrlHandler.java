@@ -253,7 +253,40 @@ public class UrlHandler {
             Parameter parameter = parameters[i];
             args[i] = null;
             
-            // STRATÉGIE 1: @RequestParam annotation (PRIORITÉ MAX)
+            // Map<String, Object> - Injection automatique des paramètres du formulaire
+            if (paramType == Map.class || Map.class.isAssignableFrom(paramType)) {
+                // Vérifier les types génériques: doit être Map<String, Object>
+                java.lang.reflect.Type genericType = parameter.getParameterizedType();
+                if (genericType instanceof java.lang.reflect.ParameterizedType) {
+                    java.lang.reflect.ParameterizedType parameterizedType = (java.lang.reflect.ParameterizedType) genericType;
+                    java.lang.reflect.Type[] typeArguments = parameterizedType.getActualTypeArguments();
+                    
+                    // Vérifier que c'est Map<String, Object>
+                    if (typeArguments.length == 2 && 
+                        typeArguments[0].equals(String.class) && 
+                        typeArguments[1].equals(Object.class)) {
+                        
+                        Map<String, Object> formData = new HashMap<>();
+                        for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
+                            String key = entry.getKey();
+                            String[] values = entry.getValue();
+                            if (values != null && values.length > 0) {
+                                // Si un seul élément, stocker directement la valeur
+                                if (values.length == 1) {
+                                    formData.put(key, values[0]);
+                                } else {
+                                    // Si plusieurs éléments, stocker le tableau
+                                    formData.put(key, values);
+                                }
+                            }
+                        }
+                        args[i] = formData;
+                    }
+                }
+                // C'est un Map, on ne tente pas les autres               continue;
+            }
+            
+            // @RequestParam annotation 
             if (parameter.isAnnotationPresent(RequestParam.class)) {
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
                 String paramName = annotation.value().isEmpty() ? parameter.getName() : annotation.value();
@@ -264,14 +297,14 @@ public class UrlHandler {
                 }
             }
             
-            // STRATÉGIE 2: Correspondance par nom exact
+            // Correspondance par nom exact
             String[] values = requestParams.get(parameter.getName());
             if (values != null && values.length > 0) {
                 args[i] = convertValue(values[0], paramType);
                 continue;
             }
             
-            // STRATÉGIE 3: Si le paramètre s'appelle arg0, arg1, etc., utiliser l'index
+            // Si le paramètre s'appelle arg0, arg1, etc., utiliser l'index
             if (parameter.getName().startsWith("arg") && !paramKeys.isEmpty()) {
                 try {
                     int argIndex = Integer.parseInt(parameter.getName().substring(3));
@@ -288,7 +321,7 @@ public class UrlHandler {
                 }
             }
             
-            // STRATÉGIE 4: Prendre le premier paramètre disponible (fallback)
+            // Prendre le premier paramètre disponible (fallback)
             if (args[i] == null && !paramKeys.isEmpty() && i < paramKeys.size()) {
                 String key = paramKeys.get(i);
                 values = requestParams.get(key);
@@ -298,7 +331,7 @@ public class UrlHandler {
                 }
             }
             
-            // STRATÉGIE 5: Paramètres d'URL pattern
+            // Paramètres d'URL pattern
             if (args[i] == null && urlPatterns.containsKey(findPatternUrl(pathWithoutQuery))) {
                 String patternUrl = findPatternUrl(pathWithoutQuery);
                 Map<String, String> urlParams = extractUrlParams(patternUrl, pathWithoutQuery);
@@ -309,7 +342,7 @@ public class UrlHandler {
                 }
             }
             
-            // STRATÉGIE 6: Paramètres de path simple
+            // Paramètres de path simple
             if (args[i] == null && pathWithoutQuery.contains("/") && !pathWithoutQuery.contains("{") && !pathWithoutQuery.contains("?")) {
                 String[] urlParts = pathWithoutQuery.split("/");
                 String lastPart = urlParts[urlParts.length - 1];
@@ -323,7 +356,7 @@ public class UrlHandler {
         return args;
     }
 
-    // Ajoutez cette méthode helper
+    //méthode helper
     private boolean isNumericType(Class<?> type) {
         return type == Integer.class || type == int.class || 
             type == Long.class || type == long.class ||
