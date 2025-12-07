@@ -283,7 +283,21 @@ public class UrlHandler {
                         args[i] = formData;
                     }
                 }
-                // C'est un Map, on ne tente pas les autres               continue;
+                // C'est un Map, on ne tente pas les autres stratégies
+                continue;
+            }
+            
+            // STRATÉGIE 0.5: Injection automatique d'objets personnalisés
+            if (!paramType.isPrimitive() && paramType != String.class && !Map.class.isAssignableFrom(paramType)) {
+                try {
+                    Object injectedObject = injectObjectFromForm(paramType, parameter.getName(), requestParams);
+                    if (injectedObject != null) {
+                        args[i] = injectedObject;
+                        continue;
+                    }
+                } catch (Exception e) {
+                    // Si l'injection échoue, continuer avec les autres stratégies
+                }
             }
             
             // @RequestParam annotation 
@@ -444,6 +458,65 @@ public class UrlHandler {
                 System.out.println(httpMethod + " " + url + " -> " + 
                     method.getDeclaringClass().getSimpleName() + "." + method.getName());
             }
+        }
+    }
+
+    private Object injectObjectFromForm(Class<?> objectType, String paramName, Map<String, String[]> requestParams) {
+        try {
+            // Créer une instance de l'objet
+            Object instance = objectType.getDeclaredConstructor().newInstance();
+            
+            // Préfixe à rechercher (nom du paramètre + ".")
+            String prefix = paramName + ".";
+            
+            // Parcourir tous les paramètres du formulaire
+            for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
+                String key = entry.getKey();
+                String[] values = entry.getValue();
+                
+                // Vérifier si le paramètre commence par le préfixe
+                if (key.startsWith(prefix) && values != null && values.length > 0) {
+                    // Extraire le nom du champ (après le point)
+                    String fieldName = key.substring(prefix.length());
+                    
+                    
+                    // Chercher le setter correspondant
+                    String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);                    
+                    try {
+                        // Chercher le setter
+                        java.lang.reflect.Method setter = objectType.getMethod(setterName, String.class);
+                        
+                        // Convertir et injecter la valeur
+                        String value = values[0]; // Prendre la première valeur
+                        setter.invoke(instance, value);
+                        
+                    } catch (NoSuchMethodException e) {
+                        // Si pas de setter String, essayer avec d'autres types
+                        try {
+                            // Essayer avec int
+                            java.lang.reflect.Method setter = objectType.getMethod(setterName, int.class);
+                            setter.invoke(instance, Integer.parseInt(values[0]));
+                        } catch (Exception e2) {
+                            // Essayer avec double
+                            try {
+                                java.lang.reflect.Method setter = objectType.getMethod(setterName, double.class);
+                                setter.invoke(instance, Double.parseDouble(values[0]));
+                            } catch (Exception e3) {
+                                // Champ ignoré si aucun setter compatible trouvé
+                            }
+                        }
+                    }
+                }
+            }
+            
+            System.out.println("Injection terminée");
+            return instance;
+            
+        } catch (Exception e) {
+            System.out.println("Erreur lors de l'injection: " + e.getMessage());
+            e.printStackTrace();
+            // Si l'injection échoue, retourner null
+            return null;
         }
     }
 }
