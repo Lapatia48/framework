@@ -160,6 +160,14 @@ public class UrlHandler {
                 Object resultValue = method.invoke(controllerInstance, args);
                 Class<?> returnType = method.getReturnType();
                 
+                // Vérifier si la méthode est annotée @Api
+                boolean isApiMethod = method.isAnnotationPresent(Api.class);
+                
+                // Si @Api, convertir la réponse en JSON (sauf ModelAndView)
+                if (isApiMethod && !(resultValue instanceof modelAndView.ModelAndView)) {
+                    resultValue = convertToJson(resultValue, returnType);
+                }
+                
                 return new Object[] {
                     url,
                     returnType,
@@ -172,6 +180,23 @@ public class UrlHandler {
             return null;
         } catch (Exception e) {
             e.printStackTrace();
+            
+            // Si c'est une méthode @Api, retourner une erreur en JSON
+            try {
+                Method method = findMatchingMethod(url, httpMethod);
+                if (method != null && method.isAnnotationPresent(Api.class)) {
+                    String errorJson = createErrorJson(e.getMessage());
+                    return new Object[] {
+                        url,
+                        String.class,
+                        null,
+                        errorJson,
+                        null,
+                        null
+                    };
+                }
+            } catch (Exception ignored) {}
+            
             return new Object[] {
                 url,
                 null,
@@ -518,5 +543,150 @@ public class UrlHandler {
             // Si l'injection échoue, retourner null
             return null;
         }
+    }
+
+    /**
+     * Convertit un objet en JSON pour les contrôleurs annotés @Api
+     */
+    private String convertToJson(Object resultValue, Class<?> returnType) {
+        try {
+            StringBuilder json = new StringBuilder();
+            json.append("{");
+            json.append("\"status\":\"success\",");
+            json.append("\"code\":200,");
+            json.append("\"data\":");
+            
+            if (resultValue == null) {
+                json.append("null");
+            } else if (resultValue instanceof String) {
+                json.append(objectToJson(resultValue));
+            } else {
+                // Pour les objets personnalisés (Employe, etc.)
+                json.append(objectToJson(resultValue));
+            }
+            
+            json.append("}");
+            return json.toString();
+        } catch (Exception e) {
+            return createErrorJson("Erreur lors de la conversion JSON: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Crée un message d'erreur au format JSON
+     */
+    private String createErrorJson(String errorMessage) {
+        StringBuilder json = new StringBuilder();
+        json.append("{");
+        json.append("\"status\":\"error\",");
+        json.append("\"code\":500,");
+        json.append("\"message\":").append(escapeJson(errorMessage));
+        json.append("}");
+        return json.toString();
+    }
+
+    /**
+     * Convertit un objet en JSON de manière récursive
+     */
+    private String objectToJson(Object obj) {
+        if (obj == null) {
+            return "null";
+        }
+        
+        if (obj instanceof String) {
+            return escapeJson((String) obj);
+        }
+        
+        if (obj instanceof Number || obj instanceof Boolean) {
+            return obj.toString();
+        }
+        
+        if (obj instanceof Map) {
+            StringBuilder json = new StringBuilder("{");
+            Map<?, ?> map = (Map<?, ?>) obj;
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) json.append(",");
+                json.append(escapeJson(entry.getKey().toString())).append(":");
+                json.append(objectToJson(entry.getValue()));
+                first = false;
+            }
+            json.append("}");
+            return json.toString();
+        }
+        
+        // Pour les objets personnalisés, utiliser la réflexion
+        try {
+            StringBuilder json = new StringBuilder("{");
+            Class<?> clazz = obj.getClass();
+            java.lang.reflect.Method[] methods = clazz.getMethods();
+            boolean first = true;
+            
+            for (java.lang.reflect.Method method : methods) {
+                if (method.getName().startsWith("get") && 
+                    method.getParameterCount() == 0 && 
+                    !method.getName().equals("getClass")) {
+                    
+                    String fieldName = method.getName().substring(3);
+                    fieldName = Character.toLowerCase(fieldName.charAt(0)) + fieldName.substring(1);
+                    
+                    Object value = method.invoke(obj);
+                    
+                    if (!first) json.append(",");
+                    json.append(escapeJson(fieldName)).append(":");
+                    json.append(objectToJson(value));
+                    first = false;
+                }
+            }
+            
+            json.append("}");
+            return json.toString();
+        } catch (Exception e) {
+            return escapeJson(obj.toString());
+        }
+    }
+
+    /**
+     * Échappe une chaîne pour le format JSON
+     */
+    private String escapeJson(String str) {
+        if (str == null) {
+            return "null";
+        }
+        
+        StringBuilder escaped = new StringBuilder("\"");
+        for (char c : str.toCharArray()) {
+            switch (c) {
+                case '"':
+                    escaped.append("\\\"");
+                    break;
+                case '\\':
+                    escaped.append("\\\\");
+                    break;
+                case '\b':
+                    escaped.append("\\b");
+                    break;
+                case '\f':
+                    escaped.append("\\f");
+                    break;
+                case '\n':
+                    escaped.append("\\n");
+                    break;
+                case '\r':
+                    escaped.append("\\r");
+                    break;
+                case '\t':
+                    escaped.append("\\t");
+                    break;
+                default:
+                    if (c < ' ') {
+                        escaped.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        escaped.append(c);
+                    }
+            }
+        }
+        escaped.append("\"");
+        return escaped.toString();
     }
 }

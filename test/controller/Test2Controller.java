@@ -2,6 +2,7 @@ package controller;
 
 import java.util.Map;
 
+import annotation.Api;
 import annotation.Controller;
 import annotation.Get;
 import annotation.Post;
@@ -60,15 +61,12 @@ public class Test2Controller {
 
     @Url("/form-emp")
     @Post
-    public String saveEmploye(Employe e) {
-        StringBuilder response = new StringBuilder();
-        response.append("Employe cree avec succes!\n\n");
-        response.append("Details de l'employe:\n");
-        response.append("- Nom: ").append(e.getNom()).append("\n");
-        response.append("- Genre: ").append(e.getGenre()).append("\n");
-        response.append("- ID Departement: ").append(e.getIdDepartement()).append("\n");
-
-        return response.toString();
+    @Api
+    // public Employe saveEmploye(Employe e) {
+    //     return e;
+    // }
+    public Map<String, Object> saveEmploye(Map<String, Object> emp) {
+        return emp;
     }
 
 }
