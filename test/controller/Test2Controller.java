@@ -1,5 +1,6 @@
 package controller;
 
+import java.util.List;
 import java.util.Map;
 
 import annotation.Api;
@@ -62,11 +63,23 @@ public class Test2Controller {
     @Url("/form-emp")
     @Post
     @Api
-    // public Employe saveEmploye(Employe e) {
-    //     return e;
-    // }
-    public Map<String, Object> saveEmploye(Map<String, Object> emp) {
-        return emp;
+    public Employe saveEmploye(Employe e) {
+        return e;
     }
+
+    @Url("/form-emp-list")
+    @Get
+    public ModelAndView showFormEmpList() {
+        ModelAndView mv = new ModelAndView("formEmpList.jsp");
+        return mv;
+    }
+
+    @Url("/form-emp-list")
+    @Post
+    @Api
+    public List<Employe> saveEmployeList(List<Employe> e) {
+        return e;
+    }
+
 
 }

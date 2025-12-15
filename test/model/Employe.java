@@ -1,18 +1,23 @@
 package model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Employe {
     private String nom;
     private String genre;
-    private int idDepartement;
+    private List<Departement> departements;
 
     // Constructeur par défaut
-    public Employe() {}
+    public Employe() {
+        this.departements = new ArrayList<>();
+    }
 
     // Constructeur avec paramètres
-    public Employe(String nom, String genre, int idDepartement) {
+    public Employe(String nom, String genre, List<Departement> departements) {
         this.nom = nom;
         this.genre = genre;
-        this.idDepartement = idDepartement;
+        this.departements = departements != null ? departements : new ArrayList<>();
     }
 
     // Getters et setters
@@ -32,11 +37,18 @@ public class Employe {
         this.genre = genre;
     }
 
-    public int getIdDepartement() {
-        return idDepartement;
+    public List<Departement> getDepartements() {
+        return departements;
     }
 
-    public void setIdDepartement(int idDepartement) {
-        this.idDepartement = idDepartement;
+    public void setDepartements(List<Departement> departements) {
+        this.departements = departements;
+    }
+    
+    public void addDepartement(Departement departement) {
+        if (this.departements == null) {
+            this.departements = new ArrayList<>();
+        }
+        this.departements.add(departement);
     }
 }
