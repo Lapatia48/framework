@@ -3,9 +3,12 @@ package annotation;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -312,8 +315,26 @@ public class UrlHandler {
                 continue;
             }
             
+            // STRATÉGIE 0.4: Injection automatique de List<Object> depuis le formulaire
+            if (paramType == List.class || List.class.isAssignableFrom(paramType)) {
+                Type genericType = parameter.getParameterizedType();
+                if (genericType instanceof ParameterizedType) {
+                    ParameterizedType parameterizedType = (ParameterizedType) genericType;
+                    Type[] typeArguments = parameterizedType.getActualTypeArguments();
+                    
+                    if (typeArguments.length == 1 && typeArguments[0] instanceof Class) {
+                        Class<?> elementType = (Class<?>) typeArguments[0];
+                        List<Object> list = injectListFromForm(elementType, parameter.getName(), requestParams);
+                        if (list != null && !list.isEmpty()) {
+                            args[i] = list;
+                            continue;
+                        }
+                    }
+                }
+            }
+            
             // STRATÉGIE 0.5: Injection automatique d'objets personnalisés
-            if (!paramType.isPrimitive() && paramType != String.class && !Map.class.isAssignableFrom(paramType)) {
+            if (!paramType.isPrimitive() && paramType != String.class && !Map.class.isAssignableFrom(paramType) && !List.class.isAssignableFrom(paramType)) {
                 try {
                     Object injectedObject = injectObjectFromForm(paramType, parameter.getName(), requestParams);
                     if (injectedObject != null) {
@@ -494,43 +515,115 @@ public class UrlHandler {
             // Préfixe à rechercher (nom du paramètre + ".")
             String prefix = paramName + ".";
             
-            // Parcourir tous les paramètres du formulaire
+            // Collecter les champs simples et les champs imbriqués
+            Map<String, String> simpleFields = new HashMap<>();
+            Map<String, Map<String, String[]>> nestedFields = new HashMap<>();
+            
             for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
                 String key = entry.getKey();
                 String[] values = entry.getValue();
                 
-                // Vérifier si le paramètre commence par le préfixe
                 if (key.startsWith(prefix) && values != null && values.length > 0) {
-                    // Extraire le nom du champ (après le point)
-                    String fieldName = key.substring(prefix.length());
+                    String fieldPath = key.substring(prefix.length());
                     
-                    
-                    // Chercher le setter correspondant
-                    String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);                    
+                    // Vérifier si c'est un champ imbriqué (contient un point ou des crochets)
+                    if (fieldPath.contains(".") || fieldPath.contains("[")) {
+                        // Extraire le nom du champ parent
+                        String parentField;
+                        String remainingPath;
+                        
+                        if (fieldPath.contains("[")) {
+                            int bracketIndex = fieldPath.indexOf('[');
+                            parentField = fieldPath.substring(0, bracketIndex);
+                            remainingPath = fieldPath.substring(bracketIndex);
+                        } else {
+                            int dotIndex = fieldPath.indexOf('.');
+                            parentField = fieldPath.substring(0, dotIndex);
+                            remainingPath = fieldPath.substring(dotIndex + 1);
+                        }
+                        
+                        nestedFields.computeIfAbsent(parentField, k -> new HashMap<>())
+                                    .put(remainingPath, values);
+                    } else {
+                        // Champ simple
+                        simpleFields.put(fieldPath, values[0]);
+                    }
+                }
+            }
+            
+            // Injecter les champs simples
+            for (Map.Entry<String, String> fieldEntry : simpleFields.entrySet()) {
+                String fieldName = fieldEntry.getKey();
+                String value = fieldEntry.getValue();
+                
+                String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+                try {
+                    java.lang.reflect.Method setter = objectType.getMethod(setterName, String.class);
+                    setter.invoke(instance, value);
+                } catch (NoSuchMethodException e) {
                     try {
-                        // Chercher le setter
-                        java.lang.reflect.Method setter = objectType.getMethod(setterName, String.class);
-                        
-                        // Convertir et injecter la valeur
-                        String value = values[0]; // Prendre la première valeur
-                        setter.invoke(instance, value);
-                        
-                    } catch (NoSuchMethodException e) {
-                        // Si pas de setter String, essayer avec d'autres types
+                        java.lang.reflect.Method setter = objectType.getMethod(setterName, int.class);
+                        setter.invoke(instance, Integer.parseInt(value));
+                    } catch (Exception e2) {
                         try {
-                            // Essayer avec int
-                            java.lang.reflect.Method setter = objectType.getMethod(setterName, int.class);
-                            setter.invoke(instance, Integer.parseInt(values[0]));
-                        } catch (Exception e2) {
-                            // Essayer avec double
-                            try {
-                                java.lang.reflect.Method setter = objectType.getMethod(setterName, double.class);
-                                setter.invoke(instance, Double.parseDouble(values[0]));
-                            } catch (Exception e3) {
-                                // Champ ignoré si aucun setter compatible trouvé
-                            }
+                            java.lang.reflect.Method setter = objectType.getMethod(setterName, double.class);
+                            setter.invoke(instance, Double.parseDouble(value));
+                        } catch (Exception e3) {
+                            // Champ ignoré
                         }
                     }
+                }
+            }
+            
+            // Injecter les champs imbriqués (objets ou listes)
+            for (Map.Entry<String, Map<String, String[]>> nestedEntry : nestedFields.entrySet()) {
+                String fieldName = nestedEntry.getKey();
+                Map<String, String[]> nestedParams = nestedEntry.getValue();
+                
+                // Trouver le getter pour déterminer le type du champ
+                String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+                try {
+                    java.lang.reflect.Method getter = objectType.getMethod(getterName);
+                    Class<?> fieldType = getter.getReturnType();
+                    Type genericType = getter.getGenericReturnType();
+                    
+                    if (List.class.isAssignableFrom(fieldType)) {
+                        // C'est une liste - extraire le type d'élément
+                        if (genericType instanceof ParameterizedType) {
+                            ParameterizedType paramType = (ParameterizedType) genericType;
+                            Type[] typeArgs = paramType.getActualTypeArguments();
+                            if (typeArgs.length == 1 && typeArgs[0] instanceof Class) {
+                                Class<?> elementType = (Class<?>) typeArgs[0];
+                                
+                                // Reconstruire les paramètres pour injectListFromForm
+                                Map<String, String[]> listParams = new HashMap<>();
+                                for (Map.Entry<String, String[]> np : nestedParams.entrySet()) {
+                                    listParams.put(fieldName + np.getKey(), np.getValue());
+                                }
+                                
+                                List<Object> nestedList = injectListFromForm(elementType, fieldName, listParams);
+                                if (nestedList != null) {
+                                    String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+                                    java.lang.reflect.Method setter = objectType.getMethod(setterName, List.class);
+                                    setter.invoke(instance, nestedList);
+                                }
+                            }
+                        }
+                    } else if (!fieldType.isPrimitive() && fieldType != String.class) {
+                        // C'est un objet imbriqué
+                        Map<String, String[]> nestedObjParams = new HashMap<>();
+                        for (Map.Entry<String, String[]> np : nestedParams.entrySet()) {
+                            nestedObjParams.put(fieldName + "." + np.getKey(), np.getValue());
+                        }
+                        Object nestedObj = injectObjectFromForm(fieldType, fieldName, nestedObjParams);
+                        if (nestedObj != null) {
+                            String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+                            java.lang.reflect.Method setter = objectType.getMethod(setterName, fieldType);
+                            setter.invoke(instance, nestedObj);
+                        }
+                    }
+                } catch (NoSuchMethodException e) {
+                    // Getter non trouvé, ignorer
                 }
             }
             
@@ -541,6 +634,70 @@ public class UrlHandler {
             System.out.println("Erreur lors de l'injection: " + e.getMessage());
             e.printStackTrace();
             // Si l'injection échoue, retourner null
+            return null;
+        }
+    }
+
+    /**
+     * Injecte une liste d'objets depuis les paramètres du formulaire
+     * Format attendu: paramName[0].field, paramName[1].field, etc.
+     * Supporte aussi les objets imbriqués: paramName[0].nestedObj.field ou paramName[0].nestedList[0].field
+     */
+    private List<Object> injectListFromForm(Class<?> elementType, String paramName, Map<String, String[]> requestParams) {
+        try {
+            // Trouver tous les indices utilisés dans le formulaire
+            Map<Integer, Map<String, String[]>> indexedParams = new HashMap<>();
+            
+            // Pattern: paramName[index].field (peut contenir des sous-champs)
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                java.util.regex.Pattern.quote(paramName) + "\\[(\\d+)\\]\\.(.+)"
+            );
+            
+            for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
+                String key = entry.getKey();
+                String[] values = entry.getValue();
+                
+                java.util.regex.Matcher matcher = pattern.matcher(key);
+                if (matcher.matches() && values != null && values.length > 0) {
+                    int index = Integer.parseInt(matcher.group(1));
+                    String fieldPath = matcher.group(2);
+                    
+                    indexedParams.computeIfAbsent(index, k -> new HashMap<>())
+                                 .put(fieldPath, values);
+                }
+            }
+            
+            if (indexedParams.isEmpty()) {
+                return null;
+            }
+            
+            // Créer les objets pour chaque index
+            List<Object> result = new ArrayList<>();
+            int maxIndex = indexedParams.keySet().stream().max(Integer::compare).orElse(-1);
+            
+            for (int i = 0; i <= maxIndex; i++) {
+                Map<String, String[]> fields = indexedParams.get(i);
+                if (fields != null && !fields.isEmpty()) {
+                    // Reconstruire les paramètres pour injectObjectFromForm
+                    Map<String, String[]> objParams = new HashMap<>();
+                    String objPrefix = "obj";
+                    for (Map.Entry<String, String[]> fieldEntry : fields.entrySet()) {
+                        objParams.put(objPrefix + "." + fieldEntry.getKey(), fieldEntry.getValue());
+                    }
+                    
+                    Object instance = injectObjectFromForm(elementType, objPrefix, objParams);
+                    if (instance != null) {
+                        result.add(instance);
+                    }
+                }
+            }
+            
+            System.out.println("Injection de liste terminée: " + result.size() + " éléments");
+            return result;
+            
+        } catch (Exception e) {
+            System.out.println("Erreur lors de l'injection de liste: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -599,6 +756,19 @@ public class UrlHandler {
         
         if (obj instanceof Number || obj instanceof Boolean) {
             return obj.toString();
+        }
+        
+        if (obj instanceof Collection) {
+            StringBuilder json = new StringBuilder("[");
+            Collection<?> collection = (Collection<?>) obj;
+            boolean first = true;
+            for (Object item : collection) {
+                if (!first) json.append(",");
+                json.append(objectToJson(item));
+                first = false;
+            }
+            json.append("]");
+            return json.toString();
         }
         
         if (obj instanceof Map) {

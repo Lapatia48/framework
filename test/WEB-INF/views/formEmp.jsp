@@ -180,6 +180,20 @@
                 <input type="number" id="departement" name="e.idDepartement" value="1" required min="1">
             </div>
 
+            <div class="departement-section">
+                    <h4>Département 1</h4>
+                    <div class="row">
+                        <div class="form-group">
+                            <label for="dept0_0_id">ID:</label>
+                            <input type="number" id="dept0_0_id" name="e.departements[0].id" value="2" required min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="dept0_0_libelle">Libellé:</label>
+                            <input type="text" id="dept0_0_libelle" name="e.departements[0].libelle" value="Informatique" required>
+                        </div>
+                    </div>
+            </div>
+
             <!-- Champs qui seront ignorés par l'injection automatique -->
             <div class="form-group">
                 <label for="email">Email (ignoré par Employe):</label>
