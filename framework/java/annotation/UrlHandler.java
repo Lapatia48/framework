@@ -1,6 +1,8 @@
 package annotation;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
@@ -15,6 +17,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Part;
+import servlet.FrameworkConfig;
+import servlet.UploadResult;
 
 public class UrlHandler {
     private Map<String, Map<String, Method>> urlMappings = new HashMap<>();
@@ -151,6 +158,10 @@ public class UrlHandler {
     }
 
     public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams) {
+        return handleUrl(url, httpMethod, requestParams, null);
+    }
+
+    public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams, HttpServletRequest request) {
         try {
             Method method = findMatchingMethod(url, httpMethod);
             if (method != null) {
@@ -158,7 +169,7 @@ public class UrlHandler {
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 
                 // Préparer les arguments pour la méthode
-                Object[] args = prepareMethodArguments(method, url, requestParams);
+                Object[] args = prepareMethodArguments(method, url, requestParams, request);
                 
                 Object resultValue = method.invoke(controllerInstance, args);
                 Class<?> returnType = method.getReturnType();
@@ -166,8 +177,14 @@ public class UrlHandler {
                 // Vérifier si la méthode est annotée @Api
                 boolean isApiMethod = method.isAnnotationPresent(Api.class);
                 
-                // Si @Api, convertir la réponse en JSON (sauf ModelAndView)
-                if (isApiMethod && !(resultValue instanceof modelAndView.ModelAndView)) {
+                // Si le retour est un Part (upload), sauvegarder automatiquement et convertir en UploadResult
+                if (isApiMethod && resultValue instanceof Part) {
+                    Part uploadedPart = (Part) resultValue;
+                    UploadResult uploadResult = saveUploadedFile(uploadedPart);
+                    resultValue = convertToJson(uploadResult, UploadResult.class);
+                }
+                // Si @Api, convertir la réponse en JSON (sauf ModelAndView et Part déjà traité)
+                else if (isApiMethod && !(resultValue instanceof modelAndView.ModelAndView)) {
                     resultValue = convertToJson(resultValue, returnType);
                 }
                 
@@ -263,6 +280,10 @@ public class UrlHandler {
     }
 
     private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams) {
+        return prepareMethodArguments(method, url, requestParams, null);
+    }
+
+    private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams, HttpServletRequest request) {
         Class<?>[] paramTypes = method.getParameterTypes();
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[paramTypes.length];
@@ -276,42 +297,102 @@ public class UrlHandler {
         // Convertir les keys de requestParams en liste pour accès par index
         List<String> paramKeys = new ArrayList<>(requestParams.keySet());
         
+        // Détecter si c'est une requête multipart (upload)
+        boolean isMultipart = request != null && isMultipartRequest(request);
+        
         for (int i = 0; i < paramTypes.length; i++) {
             Class<?> paramType = paramTypes[i];
             Parameter parameter = parameters[i];
             args[i] = null;
+
+            // Injection multipart: Part
+            if (Part.class.isAssignableFrom(paramType)) {
+                if (request != null) {
+                    Part part = resolvePart(request, parameter);
+                    if (part != null) {
+                        args[i] = part;
+                    }
+                }
+                continue;
+            }
+
+            // Injection multipart: byte[] depuis un Part
+            if (paramType == byte[].class) {
+                if (request != null) {
+                    Part part = resolvePart(request, parameter);
+                    if (part != null) {
+                        try {
+                            args[i] = readAllBytes(part);
+                        } catch (Exception e) {
+                            args[i] = null;
+                        }
+                    }
+                }
+                continue;
+            }
             
             // Map<String, Object> - Injection automatique des paramètres du formulaire
+            // Map<String, byte[]> - Injection automatique des fichiers attachés
             if (paramType == Map.class || Map.class.isAssignableFrom(paramType)) {
-                // Vérifier les types génériques: doit être Map<String, Object>
+                // Vérifier les types génériques
                 java.lang.reflect.Type genericType = parameter.getParameterizedType();
                 if (genericType instanceof java.lang.reflect.ParameterizedType) {
                     java.lang.reflect.ParameterizedType parameterizedType = (java.lang.reflect.ParameterizedType) genericType;
                     java.lang.reflect.Type[] typeArguments = parameterizedType.getActualTypeArguments();
                     
-                    // Vérifier que c'est Map<String, Object>
-                    if (typeArguments.length == 2 && 
-                        typeArguments[0].equals(String.class) && 
-                        typeArguments[1].equals(Object.class)) {
+                    if (typeArguments.length == 2 && typeArguments[0].equals(String.class)) {
                         
-                        Map<String, Object> formData = new HashMap<>();
-                        for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
-                            String key = entry.getKey();
-                            String[] values = entry.getValue();
-                            if (values != null && values.length > 0) {
-                                // Si un seul élément, stocker directement la valeur
-                                if (values.length == 1) {
-                                    formData.put(key, values[0]);
-                                } else {
-                                    // Si plusieurs éléments, stocker le tableau
-                                    formData.put(key, values);
+                        // Map<String, byte[]> - Injection des fichiers attachés
+                        if (typeArguments[1].equals(byte[].class)) {
+                            if (isMultipart && request != null) {
+                                Map<String, byte[]> filesMap = new HashMap<>();
+                                try {
+                                    Collection<Part> parts = request.getParts();
+                                    int fileIndex = 0;
+                                    for (Part part : parts) {
+                                        String submittedFileName = part.getSubmittedFileName();
+                                        // Seulement les Parts qui sont des fichiers (ont un nom de fichier)
+                                        if (submittedFileName != null && !submittedFileName.isEmpty()) {
+                                            // Générer une clé unique pour le fichier
+                                            String uniqueKey = generateUniqueFileKey(filesMap, submittedFileName, fileIndex);
+                                            byte[] fileBytes = readAllBytes(part);
+                                            filesMap.put(uniqueKey, fileBytes);
+                                            fileIndex++;
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    // En cas d'erreur, injecter un Map vide
+                                }
+                                args[i] = filesMap;
+                            } else {
+                                // Pas multipart = Map vide
+                                args[i] = new HashMap<String, byte[]>();
+                            }
+                            continue;
+                        }
+                        
+                        // Map<String, Object> - Injection des données du formulaire
+                        if (typeArguments[1].equals(Object.class)) {
+                            Map<String, Object> formData = new HashMap<>();
+                            for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
+                                String key = entry.getKey();
+                                String[] values = entry.getValue();
+                                if (values != null && values.length > 0) {
+                                    // Si un seul élément, stocker directement la valeur
+                                    if (values.length == 1) {
+                                        formData.put(key, values[0]);
+                                    } else {
+                                        // Si plusieurs éléments, stocker le tableau
+                                        formData.put(key, values);
+                                    }
                                 }
                             }
+                            args[i] = formData;
+                            continue;
                         }
-                        args[i] = formData;
                     }
                 }
-                // C'est un Map, on ne tente pas les autres stratégies
+                // C'est un Map d'un autre type, on ne fait rien
                 continue;
             }
             
@@ -414,6 +495,123 @@ public class UrlHandler {
         }
         
         return args;
+    }
+
+    private Part resolvePart(HttpServletRequest request, Parameter parameter) {
+        try {
+            String partName = parameter.getName();
+            if (parameter.isAnnotationPresent(RequestParam.class)) {
+                RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+                if (!annotation.value().isEmpty()) {
+                    partName = annotation.value();
+                }
+            }
+            if (partName != null) {
+                Part part = request.getPart(partName);
+                if (part != null) {
+                    return part;
+                }
+            }
+
+            // fallback: si un seul Part fichier, retourner le premier
+            for (Part p : request.getParts()) {
+                if (p.getSubmittedFileName() != null && !p.getSubmittedFileName().isEmpty()) {
+                    return p;
+                }
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
+    }
+
+    private byte[] readAllBytes(Part part) throws Exception {
+        try (InputStream is = part.getInputStream(); ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = is.read(chunk)) != -1) {
+                buffer.write(chunk, 0, read);
+            }
+            return buffer.toByteArray();
+        }
+    }
+
+    /**
+     * Détecte si la requête est multipart/form-data (upload de fichier)
+     */
+    private boolean isMultipartRequest(HttpServletRequest request) {
+        String contentType = request.getContentType();
+        return contentType != null && contentType.toLowerCase().startsWith("multipart/");
+    }
+
+    /**
+     * Génère une clé unique pour un fichier dans le Map.
+     * Si le nom existe déjà, ajoute un suffixe (_1, _2, etc.)
+     */
+    private String generateUniqueFileKey(Map<String, byte[]> existingFiles, String fileName, int index) {
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = "file_" + index;
+        }
+        
+        // Si le nom n'existe pas encore, on le retourne directement
+        if (!existingFiles.containsKey(fileName)) {
+            return fileName;
+        }
+        
+        // Sinon, on ajoute un suffixe pour le rendre unique
+        String baseName = fileName;
+        String extension = "";
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            baseName = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex);
+        }
+        
+        int counter = 1;
+        String uniqueName;
+        do {
+            uniqueName = baseName + "_" + counter + extension;
+            counter++;
+        } while (existingFiles.containsKey(uniqueName));
+        
+        return uniqueName;
+    }
+
+    /**
+     * Sauvegarde un fichier uploadé vers le dossier configuré et retourne un UploadResult.
+     * Utilisé automatiquement par le framework pour les contrôleurs qui retournent void/UploadResult.
+     */
+    public UploadResult saveUploadedFile(Part part) {
+        if (part == null || part.getSize() == 0) {
+            return UploadResult.error("Aucun fichier reçu");
+        }
+        try {
+            String submitted = part.getSubmittedFileName();
+            String fileName = sanitizeFileName(submitted != null ? submitted : "upload.bin");
+            
+            String uploadDir = FrameworkConfig.getUploadDir();
+            java.nio.file.Path dir = java.nio.file.Paths.get(uploadDir);
+            java.nio.file.Files.createDirectories(dir);
+            
+            java.nio.file.Path target = dir.resolve(fileName);
+            
+            try (InputStream is = part.getInputStream()) {
+                java.nio.file.Files.copy(is, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            
+            return UploadResult.success(fileName, part.getContentType(), part.getSize(), target.toString());
+        } catch (Exception e) {
+            return UploadResult.error("Erreur lors de la sauvegarde: " + e.getMessage());
+        }
+    }
+
+    private String sanitizeFileName(String name) {
+        String cleaned = name.replace('\\', '/');
+        if (cleaned.contains("/")) {
+            cleaned = cleaned.substring(cleaned.lastIndexOf('/') + 1);
+        }
+        cleaned = cleaned.trim();
+        return cleaned.isEmpty() ? "upload.bin" : cleaned;
     }
 
     //méthode helper

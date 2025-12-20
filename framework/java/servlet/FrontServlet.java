@@ -1,15 +1,18 @@
 package servlet;
 
 import java.io.IOException;
+import java.util.Map;
+
 import annotation.UrlHandler;
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import modelAndView.ModelAndView;
-import jakarta.servlet.RequestDispatcher;
-import java.util.Map;
 
+@MultipartConfig
 public class FrontServlet extends HttpServlet {
     
     private UrlHandler urlHandler;
@@ -20,6 +23,11 @@ public class FrontServlet extends HttpServlet {
             // System.out.println("=== INITIALISATION FRONT SERVLET ===");
             urlHandler = new UrlHandler();
             urlHandler.scanControllers("controller"); 
+
+            String configuredUploadDir = getServletContext().getInitParameter("uploadDir");
+            if (configuredUploadDir != null && !configuredUploadDir.trim().isEmpty()) {
+                FrameworkConfig.setUploadDir(configuredUploadDir.trim());
+            }
             // System.out.println("Initialisation terminée - Controllers: " + urlHandler.getControllerCount() + 
             //                  ", URLs: " + urlHandler.getUrlMappingCount());
         } catch (Exception e) {
@@ -58,8 +66,8 @@ public class FrontServlet extends HttpServlet {
 
             Map<String, String[]> requestParams = req.getParameterMap();
             
-            // Utiliser UrlHandler avec les paramètres
-            Object[] result = urlHandler.handleUrl(path, httpMethod, requestParams);
+            // Utiliser UrlHandler avec la requête (support multipart upload)
+            Object[] result = urlHandler.handleUrl(path, httpMethod, requestParams, req);
             if (result != null) {
                 String url = (String) result[0];
                 Class<?> returnType = (Class<?>) result[1];
