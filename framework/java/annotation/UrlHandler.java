@@ -174,6 +174,11 @@ public class UrlHandler {
                 Object resultValue = method.invoke(controllerInstance, args);
                 Class<?> returnType = method.getReturnType();
                 
+                // Synchroniser les sessions modifiées dans les paramètres annotés @Session
+                if (request != null) {
+                    synchronizeSessionChanges(method, args, request);
+                }
+                
                 // Vérifier si la méthode est annotée @Api
                 boolean isApiMethod = method.isAnnotationPresent(Api.class);
                 
@@ -328,6 +333,15 @@ public class UrlHandler {
                         }
                     }
                 }
+                continue;
+            }
+            
+            // Injection @Session: Map<String, Object> - Copie de la session GLOBALE (partagee entre navigateurs)
+            if (parameter.isAnnotationPresent(Session.class) && 
+                (paramType == Map.class || Map.class.isAssignableFrom(paramType))) {
+                // Utiliser le gestionnaire de session global au lieu de HttpSession
+                servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
+                args[i] = globalSession.getSessionCopy();
                 continue;
             }
             
@@ -1056,5 +1070,30 @@ public class UrlHandler {
         }
         escaped.append("\"");
         return escaped.toString();
+    }
+
+    /**
+     * Synchronise les modifications apportees aux Map annotes @Session avec la session GLOBALE.
+     * Parcourt tous les parametres de la methode, et pour ceux annotes @Session, met a jour la session globale partagee entre navigateurs.
+     */
+    private void synchronizeSessionChanges(Method method, Object[] args, HttpServletRequest request) {
+        Parameter[] parameters = method.getParameters();
+        
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter parameter = parameters[i];
+            
+            // Verifier si le parametre est annote @Session et est un Map
+            if (parameter.isAnnotationPresent(Session.class) && 
+                (parameter.getType() == Map.class || Map.class.isAssignableFrom(parameter.getType()))) {
+                
+                if (args[i] instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> sessionMap = (Map<String, Object>) args[i];
+                    // Synchroniser avec la session GLOBALE (partagee entre navigateurs)
+                    servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
+                    globalSession.synchronize(sessionMap);
+                }
+            }
+        }
     }
 }
