@@ -111,14 +111,14 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎨 Gestion de Couleur Préférée</h1>
+        <h1> Couleur Préférée</h1>
         
         <% if (message != null) { %>
             <div class="message success"><%= message %></div>
         <% } %>
         
         <% if (favoriteColor != null && !favoriteColor.isEmpty()) { %>
-            <div class="color-display" style="background-color: <%= favoriteColor %>; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
+            <div class="color-display" ">
                 Votre couleur préférée est: <%= favoriteColor %>
             </div>
             
@@ -144,15 +144,7 @@
             </div>
         </form>
         
-        <div class="instructions">
-            <h3>📋 Instructions de test:</h3>
-            <p>1. Entrez une couleur (ex: red, blue, green, #ff0000)</p>
-            <p>2. Ouvrez un autre navigateur (ou mode privé)</p>
-            <p>3. Accédez à la même URL dans le 2ème navigateur</p>
-            <p>4. Vous devriez voir la même couleur (session partagée)</p>
-            <p>5. Supprimez la couleur dans un navigateur</p>
-            <p>6. Rafraîchissez l'autre navigateur pour voir la suppression</p>
-        </div>
+
     </div>
 </body>
 </html>
