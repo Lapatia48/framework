@@ -5,9 +5,9 @@ import java.util.Map;
 
 import annotation.Controller;
 import annotation.Get;
+import annotation.GlobalSession;
 import annotation.Post;
 import annotation.RequestParam;
-import annotation.Session;
 import annotation.Url;
 import modelAndView.ModelAndView;
 
@@ -17,21 +17,21 @@ public class SessionController {
     // Afficher le formulaire de couleur préférée
     @Url("/session/color-form")
     @Get
-    public ModelAndView showColorForm(@Session Map<String, Object> session) {
+    public ModelAndView showColorForm(@GlobalSession Map<String, Object> session) {
         Map<String, Object> data = new HashMap<>();
         
-        // Récupérer la couleur préférée depuis la session
+        // Récupérer la couleur préférée depuis la session GLOBALE
         String favoriteColor = (String) session.get("favoriteColor");
         data.put("favoriteColor", favoriteColor);
         
         return new ModelAndView("colorForm.jsp", data);
     }
     
-    // Enregistrer la couleur préférée dans la session
+    // Enregistrer la couleur préférée dans la session GLOBALE
     @Url("/session/save-color")
     @Post
-    public ModelAndView saveColor(@RequestParam("color") String color, @Session Map<String, Object> session) {
-        // Sauvegarder la couleur dans la session
+    public ModelAndView saveColor(@RequestParam("color") String color, @GlobalSession Map<String, Object> session) {
+        // Sauvegarder la couleur dans la session GLOBALE (partagée entre navigateurs)
         session.put("favoriteColor", color);
         
         // Rediriger vers le formulaire pour afficher le résultat
@@ -42,11 +42,11 @@ public class SessionController {
         return new ModelAndView("colorForm.jsp", data);
     }
     
-    // Supprimer la couleur préférée de la session
+    // Supprimer la couleur préférée de la session GLOBALE
     @Url("/session/delete-color")
     @Post
-    public ModelAndView deleteColor(@Session Map<String, Object> session) {
-        // Supprimer la couleur de la session
+    public ModelAndView deleteColor(@GlobalSession Map<String, Object> session) {
+        // Supprimer la couleur de la session GLOBALE
         session.remove("favoriteColor");
         
         // Rediriger vers le formulaire

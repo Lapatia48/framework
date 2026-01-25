@@ -19,8 +19,10 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.Part;
 import servlet.FrameworkConfig;
+import servlet.UnauthorizedException;
 import servlet.UploadResult;
 
 public class UrlHandler {
@@ -158,25 +160,49 @@ public class UrlHandler {
     }
 
     public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams) {
-        return handleUrl(url, httpMethod, requestParams, null);
+        return handleUrl(url, httpMethod, requestParams, null, null);
     }
 
     public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams, HttpServletRequest request) {
+        return handleUrl(url, httpMethod, requestParams, request, null);
+    }
+
+    public Object[] handleUrl(String url, String httpMethod, Map<String, String[]> requestParams, HttpServletRequest request, HttpServletResponse response) {
         try {
             Method method = findMatchingMethod(url, httpMethod);
             if (method != null) {
+                // Obtenir ou créer la session utilisateur
+                String sessionId = null;
+                servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
+                if (request != null) {
+                    sessionId = globalSession.getOrCreateSessionId(request, response);
+                }
+                
+                // Vérifier les restrictions @Role AVANT d'invoquer la méthode
+                UnauthorizedException authError = checkRoleAccess(method, sessionId, globalSession);
+                if (authError != null) {
+                    return new Object[] {
+                        url,
+                        null,
+                        method.getName(),
+                        authError,
+                        method.getDeclaringClass().getSimpleName(),
+                        null
+                    };
+                }
+                
                 Class<?> controllerClass = method.getDeclaringClass();
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 
-                // Préparer les arguments pour la méthode
-                Object[] args = prepareMethodArguments(method, url, requestParams, request);
+                // Préparer les arguments pour la méthode (avec sessionId)
+                Object[] args = prepareMethodArguments(method, url, requestParams, request, sessionId);
                 
                 Object resultValue = method.invoke(controllerInstance, args);
                 Class<?> returnType = method.getReturnType();
                 
                 // Synchroniser les sessions modifiées dans les paramètres annotés @Session
-                if (request != null) {
-                    synchronizeSessionChanges(method, args, request);
+                if (request != null && sessionId != null) {
+                    synchronizeSessionChanges(method, args, sessionId);
                 }
                 
                 // Vérifier si la méthode est annotée @Api
@@ -233,6 +259,46 @@ public class UrlHandler {
         }
     }
 
+    /**
+     * Vérifie si l'utilisateur a le droit d'accéder à la méthode annotée @Role
+     * @return null si autorisé, UnauthorizedException sinon
+     */
+    private UnauthorizedException checkRoleAccess(Method method, String sessionId, servlet.GlobalSessionManager globalSession) {
+        // Pas d'annotation @Role = accessible par tous
+        if (!method.isAnnotationPresent(Role.class)) {
+            return null;
+        }
+        
+        Role roleAnnotation = method.getAnnotation(Role.class);
+        String[] requiredRoles = roleAnnotation.value();
+        
+        // Vérifier d'abord si l'utilisateur est authentifié
+        boolean isAuthenticated = globalSession.isAuthenticated(sessionId);
+        
+        if (!isAuthenticated) {
+            return new UnauthorizedException("Authentification requise pour accéder à cette ressource");
+        }
+        
+        // Si aucun rôle spécifique n'est requis, l'authentification suffit
+        if (requiredRoles == null || requiredRoles.length == 0) {
+            return null;
+        }
+        
+        // Vérifier si l'utilisateur a un des rôles requis
+        String userRole = globalSession.getUserRole(sessionId);
+        if (userRole == null) {
+            return new UnauthorizedException("Rôle insuffisant pour accéder à cette ressource", String.join(" ou ", requiredRoles));
+        }
+        
+        for (String requiredRole : requiredRoles) {
+            if (requiredRole.equalsIgnoreCase(userRole)) {
+                return null; // Rôle trouvé, accès autorisé
+            }
+        }
+        
+        return new UnauthorizedException("Rôle insuffisant pour accéder à cette ressource", String.join(" ou ", requiredRoles));
+    }
+
     private Method findMatchingMethod(String url, String httpMethod) {
         String pathWithoutQuery = url.contains("?") ? url.split("\\?")[0] : url;
         
@@ -285,10 +351,14 @@ public class UrlHandler {
     }
 
     private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams) {
-        return prepareMethodArguments(method, url, requestParams, null);
+        return prepareMethodArguments(method, url, requestParams, null, null);
     }
 
     private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams, HttpServletRequest request) {
+        return prepareMethodArguments(method, url, requestParams, request, null);
+    }
+
+    private Object[] prepareMethodArguments(Method method, String url, Map<String, String[]> requestParams, HttpServletRequest request, String sessionId) {
         Class<?>[] paramTypes = method.getParameterTypes();
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[paramTypes.length];
@@ -336,12 +406,20 @@ public class UrlHandler {
                 continue;
             }
             
-            // Injection @Session: Map<String, Object> - Copie de la session GLOBALE (partagee entre navigateurs)
+            // Injection @GlobalSession: Map<String, Object> - Session GLOBALE partagée entre tous les navigateurs
+            if (parameter.isAnnotationPresent(GlobalSession.class) && 
+                (paramType == Map.class || Map.class.isAssignableFrom(paramType))) {
+                servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
+                args[i] = globalSession.getGlobalSessionCopy();
+                continue;
+            }
+            
+            // Injection @Session: Map<String, Object> - Copie de la session UTILISATEUR (par cookie)
             if (parameter.isAnnotationPresent(Session.class) && 
                 (paramType == Map.class || Map.class.isAssignableFrom(paramType))) {
-                // Utiliser le gestionnaire de session global au lieu de HttpSession
+                // Utiliser le gestionnaire de session avec sessionId utilisateur
                 servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
-                args[i] = globalSession.getSessionCopy();
+                args[i] = globalSession.getSessionCopy(sessionId);
                 continue;
             }
             
@@ -1073,25 +1151,36 @@ public class UrlHandler {
     }
 
     /**
-     * Synchronise les modifications apportees aux Map annotes @Session avec la session GLOBALE.
-     * Parcourt tous les parametres de la methode, et pour ceux annotes @Session, met a jour la session globale partagee entre navigateurs.
+     * Synchronise les modifications apportees aux Map annotes @Session ou @GlobalSession.
+     * - @GlobalSession: synchronise vers la session globale partagée
+     * - @Session: synchronise vers la session utilisateur identifiee par sessionId
      */
-    private void synchronizeSessionChanges(Method method, Object[] args, HttpServletRequest request) {
+    private void synchronizeSessionChanges(Method method, Object[] args, String sessionId) {
         Parameter[] parameters = method.getParameters();
+        servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
         
         for (int i = 0; i < parameters.length; i++) {
             Parameter parameter = parameters[i];
             
-            // Verifier si le parametre est annote @Session et est un Map
-            if (parameter.isAnnotationPresent(Session.class) && 
+            // Verifier @GlobalSession
+            if (parameter.isAnnotationPresent(GlobalSession.class) && 
                 (parameter.getType() == Map.class || Map.class.isAssignableFrom(parameter.getType()))) {
                 
                 if (args[i] instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> sessionMap = (Map<String, Object>) args[i];
-                    // Synchroniser avec la session GLOBALE (partagee entre navigateurs)
-                    servlet.GlobalSessionManager globalSession = servlet.GlobalSessionManager.getInstance();
-                    globalSession.synchronize(sessionMap);
+                    globalSession.synchronizeGlobal(sessionMap);
+                }
+            }
+            
+            // Verifier @Session
+            if (parameter.isAnnotationPresent(Session.class) && 
+                (parameter.getType() == Map.class || Map.class.isAssignableFrom(parameter.getType()))) {
+                
+                if (args[i] instanceof Map && sessionId != null) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> sessionMap = (Map<String, Object>) args[i];
+                    globalSession.synchronize(sessionId, sessionMap);
                 }
             }
         }

@@ -66,9 +66,26 @@ public class FrontServlet extends HttpServlet {
 
             Map<String, String[]> requestParams = req.getParameterMap();
             
-            // Utiliser UrlHandler avec la requête (support multipart upload)
-            Object[] result = urlHandler.handleUrl(path, httpMethod, requestParams, req);
+            // Utiliser UrlHandler avec la requête et la réponse (support session cookies)
+            Object[] result = urlHandler.handleUrl(path, httpMethod, requestParams, req, resp);
             if (result != null) {
+                // Verifier si c'est une erreur d'autorisation
+                if (result[3] instanceof UnauthorizedException) {
+                    UnauthorizedException ex = (UnauthorizedException) result[3];
+                    resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    resp.setContentType("text/html;charset=UTF-8");
+                    resp.getWriter().println("<html><body>");
+                    resp.getWriter().println("<h1>401 - Non autorisé</h1>");
+                    resp.getWriter().println("<p>" + ex.getMessage() + "</p>");
+                    if (ex.isNeedsAuthentication()) {
+                        resp.getWriter().println("<p>Veuillez vous <a href=\"/login\">connecter</a>.</p>");
+                    } else {
+                        resp.getWriter().println("<p>Rôle requis: " + ex.getRequiredRole() + "</p>");
+                    }
+                    resp.getWriter().println("</body></html>");
+                    return;
+                }
+                
                 String url = (String) result[0];
                 Class<?> returnType = (Class<?>) result[1];
                 String methodName = (String) result[2];
